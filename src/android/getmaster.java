@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Collectors;
 
 
@@ -125,7 +126,7 @@ public class getmaster extends CordovaPlugin {
     }
   }
 
-  private void getUserSecret(final JSONArray data, final CallbackContext callbackContext) {
+  private void getUserSecrets(final JSONArray data, final CallbackContext callbackContext) {
 
     if (data == null || data.length() == 0) {
       callbackContext.error("bad request (parameter)");
@@ -134,26 +135,34 @@ public class getmaster extends CordovaPlugin {
 
 
     try {
-      String user = data.get(0).toString();
+      JSONArray arr = new JSONArray();
+      
+      for (int n=0;n<data.length();n++) {
+        String user = data.getString(n);
 
-      String key = null;
+        String key = null;
 
-      if (!checkForUSEAccount(cordova.getActivity())) {
-        if (!retrieveMasterKey(cordova.getActivity())) {
+        if (!checkForUSEAccount(cordova.getActivity())) {
+          if (!retrieveMasterKey(cordova.getActivity())) {
+            callbackContext.error("MasterKey konnte nicht geladen werden.");
+            return;
+          }
+        }
+
+        key = getMasterKey(cordova.getActivity());
+        if (key == null) {
           callbackContext.error("MasterKey konnte nicht geladen werden.");
           return;
         }
+
+        String result = createUserSecret(key, user);
+        JSONObject obj = new JSONObject();
+        obj.put("user",user);
+        obj.put("key",result);
+        arr.put(obj);
       }
 
-      key = getMasterKey(cordova.getActivity());
-      if (key == null) {
-        callbackContext.error("MasterKey konnte nicht geladen werden.");
-        return;
-      }
-
-      String result = createUserSecret(key, user);
-
-      callbackContext.success(result);
+      callbackContext.success(arr);
 
     } catch (Exception e) {
       Log.e("cordova-plugin-getmaster", e.getMessage());
@@ -233,21 +242,24 @@ public class getmaster extends CordovaPlugin {
 
   public static String createUserSecret(String key, String user) {
 
-    String input = new StringBuilder(user).reverse().toString() + key + user;
-
     try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      byte[] encodedhash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-      String strhash = bytesToHex(encodedhash);
+      String input = new StringBuilder(user).reverse().toString() + key + user;
+      byte[] buff = input.getBytes(StandardCharsets.UTF_8);
+      String b64 = Base64.encodeToString(buff,Base64.NO_WRAP);
+      byte[] bytes = b64.getBytes(StandardCharsets.UTF_8);
 
-      SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithSHA1");
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      byte[] crypto = digest.digest(bytes);
+      String strhash = bytesToHex(crypto);
+
+      SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1");
 
       int iterations = 300;
-      PBEKeySpec pbeKeySpec = new PBEKeySpec(strhash.toCharArray(), strhash.getBytes(StandardCharsets.UTF_8), iterations, 256);
+      PBEKeySpec pbeKeySpec = new PBEKeySpec(strhash.toCharArray(), user.getBytes(StandardCharsets.UTF_8), iterations, 256);
       Key secretKey = factory.generateSecret(pbeKeySpec);
-      byte[] resultkey = new byte[32];
-      System.arraycopy(secretKey.getEncoded(), 0, resultkey, 0, 32);
-      String result = Base64.encodeToString(resultkey, Base64.DEFAULT);
+      byte[] resbytes = new byte[32];
+      System.arraycopy(secretKey.getEncoded(), 0, resbytes, 0, 32);
+      String result = Base64.encodeToString(resbytes, Base64.NO_WRAP).trim();
       return result;
     } catch (Exception e) {
       Log.e("cordova-plugin-getmaster", "createUserSecret: " + e.getMessage(), e);
@@ -372,7 +384,7 @@ public class getmaster extends CordovaPlugin {
       String result = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)).lines().collect(Collectors.joining(""));
 
       urlConnection.disconnect();
-      return new String(Base64.decode(result.trim().replace("\"",""),Base64.DEFAULT),"UTF-8");
+      return new String(Base64.decode(result.trim().replace("\"",""),Base64.NO_WRAP),"UTF-8");
     }
     catch (Exception e) {
       Log.e("cordova-plugin-getmaster", "retrieveMasterKey: "+e.getMessage());
@@ -439,10 +451,10 @@ public class getmaster extends CordovaPlugin {
   @Override
   public boolean execute(final String action, final JSONArray data, final CallbackContext callbackContext) {
 
-    if (action.equals("getUserSecret")) {
+    if (action.equals("getUserSecrets")) {
       cordova.getThreadPool().execute(new Runnable() {
         public void run() {
-          getUserSecret(data, callbackContext);
+          getUserSecrets(data, callbackContext);
         }
       });
 
