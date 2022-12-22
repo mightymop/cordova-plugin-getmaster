@@ -395,6 +395,17 @@ public class getmaster extends CordovaPlugin {
     }
   }
 
+  public static void remove(Context context)
+  {
+    Account acc = getUSEAccount(context);
+    if (acc==null)
+    {
+      return;
+    }
+    AccountManager accountManager = (AccountManager) context.getSystemService(Context.ACCOUNT_SERVICE);
+    accountManager.removeAccountExplicitly(acc);
+  }
+
   public static void init(CallbackContext ctx, Context context){
     if (!getmaster.checkForUSEAccount(context))
     {
