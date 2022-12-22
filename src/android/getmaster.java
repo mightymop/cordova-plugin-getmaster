@@ -1,23 +1,29 @@
-package de.mopsdom.sqlitecursor;
+package de.mopsdom.getmaster;
 
 import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.content.Context;
-import android.database.CursorWindow;
-import android.os.Build;
+
 import android.util.Base64;
 import android.util.Log;
+
+import com.google.zxing.client.android.BuildConfig;
 
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.lang.reflect.Field;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 
 import javax.crypto.SecretKeyFactory;
@@ -35,35 +41,88 @@ public class getmaster extends CordovaPlugin {
 
   private static String account_type = "USE";
 
-  private void get(final JSONArray data, final CallbackContext callbackContext) {
-
-    if (data == null || data.length() == 0) {
-      callbackContext.error("bad request (parameter)");
-      return;
-    }
-
+  private static JSONObject getConfigFile(Context ctx) {
 
     try {
-      int size = Integer.parseInt(data.get(0).toString());
+      int rawDevel = ctx.getResources().getIdentifier("development", "raw", ctx.getPackageName());
+      int rawProd = ctx.getResources().getIdentifier("production", "raw", ctx.getPackageName());
 
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        Field field = CursorWindow.class.getDeclaredField("sCursorWindowSize");
-        field.setAccessible(true);
-        field.set(null, size * 1024 * 1024);
-      }
+      InputStream raw = ctx.getResources().openRawResource(BuildConfig.DEBUG ? rawDevel : rawProd);
+
+      int size = raw.available();
+      byte[] buffer = new byte[size];
+      raw.read(buffer);
+      raw.close();
+      String result = new String(buffer);
+      return new JSONObject(result);
     } catch (Exception e) {
-      Log.e("cordova-plugin-getmaster", e.getMessage());
+      Log.e("cordova-plugin-getmaster", "getConfigFile: " + e.getMessage());
+      return null;
     }
-    callbackContext.success();
   }
 
-  private static String getBackend()
-  {
+  private static String getBackend(Context ctx) {
+    JSONObject config = getConfigFile(ctx);
+    String srv_record =null;
+    String backend_url = null;
+    ArrayList<String> dnsServers = new ArrayList<>();
+    JSONArray arrJson;
+    boolean forceSettingsBackendUrl = false;
+    try {
+      srv_record = config.getJSONObject("api_endpoints").getString("srv_record");
+      backend_url = config.getJSONObject("api_endpoints").getString("backend_url");
+      forceSettingsBackendUrl = config.getJSONObject("api_endpoints").getBoolean("forceSettingsBackendUrl");
+
+      arrJson = config.getJSONObject("api_endpoints").getJSONArray("custom_dnsserver");
+      for (int i = 0; i < arrJson.length(); i++)
+        dnsServers.add(arrJson.getString(i));
+    } catch (Exception e) {
+      Log.e("cordova-plugin-getmaster", "getBackend: " + e.getMessage());
+      return null;
+    }
+
+    if (forceSettingsBackendUrl && (backend_url != null && backend_url.trim().length() > 0)) {
+      return backend_url;
+    }
+
+    try {
       nslookup dns = new nslookup();
-      String query = "";
-      String type = "srv";
-      //dns.doNslookup( query, type,ArrayList<String> dnsServers, boolean useFallback)
-    return null;
+      if (srv_record != null) {
+        JSONObject result = dns.doNslookup(srv_record, "SRV", dnsServers, false);
+        if (result != null) {
+          JSONObject response = result.has("response")?result.getJSONObject("response"):null;
+          if (response!=null) {
+            if (response.getString("status").equalsIgnoreCase("success")) {
+              JSONArray resultArr = response.has("result")?response.getJSONArray("result"):null;
+              if (resultArr!=null && resultArr.length()>0)
+              {
+                return resultArr.getJSONObject(0).getString("target") + ":" + resultArr.getJSONObject(0).getString("port");
+              }
+            }
+          }
+        }
+      }
+      return null;
+    }
+    catch (Exception e)
+    {
+      Log.e("cordova-plugin-getmaster", "getBackend: " + e.getMessage());
+      return null;
+    }
+  }
+
+  private static boolean allowCerts(Context ctx) {
+    JSONObject config = getConfigFile(ctx);
+
+    boolean allowAllCerts = false;
+    try {
+
+      return config.getJSONObject("api_endpoints").has("allowAllCerts")?config.getJSONObject("api_endpoints").getBoolean("allowAllCerts"):true;
+
+    } catch (Exception e) {
+      Log.e("cordova-plugin-getmaster", "getBackend: " + e.getMessage());
+      return true;
+    }
   }
 
   private void getUserSecret(final JSONArray data, final CallbackContext callbackContext) {
@@ -75,17 +134,32 @@ public class getmaster extends CordovaPlugin {
 
 
     try {
-      int size = Integer.parseInt(data.get(0).toString());
+      String user = data.get(0).toString();
 
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        Field field = CursorWindow.class.getDeclaredField("sCursorWindowSize");
-        field.setAccessible(true);
-        field.set(null, size * 1024 * 1024);
+      String key = null;
+
+      if (!checkForUSEAccount(cordova.getActivity())) {
+        if (!retrieveMasterKey(cordova.getActivity())) {
+          callbackContext.error("MasterKey konnte nicht geladen werden.");
+          return;
+        }
       }
+
+      key = getMasterKey(cordova.getActivity());
+      if (key == null) {
+        callbackContext.error("MasterKey konnte nicht geladen werden.");
+        return;
+      }
+
+      String result = createUserSecret(key, user);
+
+      callbackContext.success(result);
+
     } catch (Exception e) {
       Log.e("cordova-plugin-getmaster", e.getMessage());
+      callbackContext.error(e.getMessage());
     }
-    callbackContext.success();
+
   }
 
   private static void createUSEAccount(Context ctx) {
@@ -97,10 +171,8 @@ public class getmaster extends CordovaPlugin {
 
       AccountManager accountManager = (AccountManager) ctx.getSystemService(Context.ACCOUNT_SERVICE);
       accountManager.addAccountExplicitly(account, null, null);
-    }
-    catch (Exception e)
-    {
-      Log.e("cordova-plugin-getmaster","createUSEAccount: "+e.getMessage(),e);
+    } catch (Exception e) {
+      Log.e("cordova-plugin-getmaster", "createUSEAccount: " + e.getMessage(), e);
     }
   }
 
@@ -113,15 +185,13 @@ public class getmaster extends CordovaPlugin {
       }
 
       return null;
-    }
-    catch (Exception e)
-    {
-      Log.e("cordova-plugin-getmaster","getUSEAccount: "+e.getMessage(),e);
+    } catch (Exception e) {
+      Log.e("cordova-plugin-getmaster", "getUSEAccount: " + e.getMessage(), e);
       return null;
     }
   }
 
-  private static boolean checkForUSEAccount(Context ctx) {
+  public static boolean checkForUSEAccount(Context ctx) {
     try {
       AccountManager am = (AccountManager) ctx.getSystemService(Context.ACCOUNT_SERVICE);
       Account[] accounts = am.getAccountsByType(account_type);
@@ -130,10 +200,8 @@ public class getmaster extends CordovaPlugin {
       }
 
       return false;
-    }
-    catch (Exception e)
-    {
-      Log.e("cordova-plugin-getmaster","checkForUSEAccount: "+e.getMessage(),e);
+    } catch (Exception e) {
+      Log.e("cordova-plugin-getmaster", "checkForUSEAccount: " + e.getMessage(), e);
       return false;
     }
   }
@@ -151,10 +219,8 @@ public class getmaster extends CordovaPlugin {
         createUSEAccount(ctx);
         return storeMasterKey(key, ctx);
       }
-    }
-    catch (Exception e)
-    {
-      Log.e("cordova-plugin-getmaster","storeMasterKey: "+e.getMessage(),e);
+    } catch (Exception e) {
+      Log.e("cordova-plugin-getmaster", "storeMasterKey: " + e.getMessage(), e);
       return false;
     }
   }
@@ -165,10 +231,9 @@ public class getmaster extends CordovaPlugin {
     return result.toString();
   }
 
-  public static String createUserSecret(String key, String user)
-  {
+  public static String createUserSecret(String key, String user) {
 
-    String input = new StringBuilder(user).reverse().toString()+key+user;
+    String input = new StringBuilder(user).reverse().toString() + key + user;
 
     try {
       MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -182,37 +247,47 @@ public class getmaster extends CordovaPlugin {
       Key secretKey = factory.generateSecret(pbeKeySpec);
       byte[] resultkey = new byte[32];
       System.arraycopy(secretKey.getEncoded(), 0, resultkey, 0, 32);
-      String result = Base64.encodeToString(resultkey,Base64.DEFAULT);
+      String result = Base64.encodeToString(resultkey, Base64.DEFAULT);
       return result;
-    }
-    catch (Exception e)
-    {
-      Log.e("cordova-plugin-getmaster","createUserSecret: "+e.getMessage(),e);
+    } catch (Exception e) {
+      Log.e("cordova-plugin-getmaster", "createUserSecret: " + e.getMessage(), e);
       return null;
     }
   }
 
-  private static String getMasterKey(Context ctx) {
+  public static String getMasterKey(Context ctx) {
     try {
       if (checkForUSEAccount(ctx)) {
-          Account acc = getUSEAccount(ctx);
-          AccountManager accountManager = (AccountManager) ctx.getSystemService(Context.ACCOUNT_SERVICE);
-          return accountManager.getPassword(acc);
-      }
-      else {
+        Account acc = getUSEAccount(ctx);
+        if (acc==null)
+        {
           return null;
+        }
+        AccountManager accountManager = (AccountManager) ctx.getSystemService(Context.ACCOUNT_SERVICE);
+        return accountManager.getPassword(acc);
+      } else {
+        return null;
       }
-    }
-    catch (Exception e)
-    {
-      Log.e("cordova-plugin-getmaster","getMasterKey: "+e.getMessage(),e);
+    } catch (Exception e) {
+      Log.e("cordova-plugin-getmaster", "getMasterKey: " + e.getMessage(), e);
       return null;
     }
   }
-/*
+
+  public static String trimEnd( String s,  String suffix) {
+
+    if (s.endsWith(suffix)) {
+      return s.substring(0, s.length() - suffix.length());
+    }
+    return s;
+  }
+
   private static String retrieveMasterKeyFromServer(Context ctx) {
 
+    String hostname_port = getBackend(ctx);
+    boolean allowAllCerts = allowCerts(ctx);
 
+    if (allowAllCerts) {
       TrustManager[] trustAllCerts = new TrustManager[]{
         new X509TrustManager() {
           public java.security.cert.X509Certificate[] getAcceptedIssuers() {
@@ -243,39 +318,31 @@ public class getmaster extends CordovaPlugin {
 
         HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
       } catch (Exception e) {
+        Log.e("cordova-plugin-getmaster", "retrieveMasterKey: " + e.getMessage());
+        return null;
       }
+    }
 
 
-    HttpsURLConnection urlConnection = null;
-    URL url;
     try {
-      String urlstr = ctx.getString(R.string.URL_LOGIN_SERVER) + "/login64jwt";
-      String params = "user=" + user + "&passwort=" + password + (twofa != null && twofa.trim().length() == 6 ? "&twofa=" + twofa : "");
 
-      String paramdata = null;
+      URL url;
+      HttpsURLConnection urlConnection = null;
+      String urlstr = "https://"+hostname_port+"/use_service/datadownload/getmaster";
 
-      byte[] data = params.getBytes("utf-8");
-      String base64 = Base64.encodeToString(data, Base64.URL_SAFE);
-      base64 = trimEnd(base64, "=").replace('+', '-').replace('/', '_');
-      paramdata = "data=" + base64;//URLEncoder.encode(new String(base64),"utf-8");
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      byte[] encodedhash = digest.digest(ctx.getPackageName().getBytes(StandardCharsets.UTF_8));
+      String hashedPackageId = bytesToHex(encodedhash);
 
-           // if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
-             //   paramdata="data="+URLEncoder.encode(new String(java.util.Base64.getEncoder().encode(params.getBytes("utf-8"))),"utf-8");
-            //}
-            //else
-            //{
-             //   byte[] data = params.getBytes("utf-8");
-              //  String base64 = Base64.encodeToString(data, Base64.URL_SAFE);
-
-                //paramdata="data="+URLEncoder.encode(new String(base64),"utf-8");
-            //}
+      JSONObject param = new JSONObject();
+      param.put("token",hashedPackageId);
 
       url = new URL(urlstr);
 
       urlConnection = (HttpsURLConnection) url.openConnection();
 
       // Create the SSL connection
-      if (!allowallcerts) {
+      if (!allowAllCerts) {
         SSLContext sc;
         sc = SSLContext.getInstance("TLS");
         sc.init(null, null, new java.security.SecureRandom());
@@ -285,82 +352,95 @@ public class getmaster extends CordovaPlugin {
       // set Timeout and method
       urlConnection.setReadTimeout(7000);
       urlConnection.setConnectTimeout(7000);
-      urlConnection.addRequestProperty("Content-Type", "application/x-www-form-urlencoded");
-      urlConnection.addRequestProperty("Content-Length", String.valueOf(paramdata.length()));
       urlConnection.setRequestMethod("POST");
+      urlConnection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+      urlConnection.setRequestProperty("Accept", "application/json");
       urlConnection.setDoInput(true);
       urlConnection.setDoOutput(true);
-      PrintWriter out = new PrintWriter(urlConnection.getOutputStream());
-      out.print(paramdata);
-      out.flush();
 
-      // Add any data you wish to post here
       urlConnection.connect();
+
+      OutputStream os = urlConnection.getOutputStream();
+      os.write(param.toString().getBytes("UTF-8"));
+      os.close();
 
       if (urlConnection.getResponseCode() < 200 || urlConnection.getResponseCode() > 201)
         return null;
 
-      String result = "";
-      BufferedReader in = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
+      InputStream in = urlConnection.getInputStream();
 
-      String inputLine;
-      while ((inputLine = in.readLine()) != null) {
-        result += inputLine;
-      }
-      out.close();
+      String result = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)).lines().collect(Collectors.joining(""));
 
       urlConnection.disconnect();
-
-            //String authField = urlConnection.getHeaderField("Authorization").trim();
-
-            //return authField.split("\\s")[1];
-
-      JSONObject json = null;
-      json = new JSONObject(result);
-
-      if (json.has("result") && !json.getBoolean("result"))
-        throw new Exception(json.getString("message"));
-      else if (json.has("access_token")) {
-        return json.getString("access_token");
-      } else
-        throw new Exception("NO TOKEN DELIVERED!");
-
-    } finally {
-      if (urlConnection != null) {
-        try {
-          urlConnection.disconnect();
-        } catch (Exception e) {
-        }
-      }
+      return new String(Base64.decode(result.trim().replace("\"",""),Base64.DEFAULT),"UTF-8");
+    }
+    catch (Exception e) {
+      Log.e("cordova-plugin-getmaster", "retrieveMasterKey: "+e.getMessage());
+      return null;
     }
   }
-*/
+
   public static boolean retrieveMasterKey(Context ctx) {
     try {
-      String key =  null;//retrieveMasterKeyFromServer(ctx);
-      if (key==null) {
-        Log.e("cordova-plugin-getmaster","retrieveMasterKey: Key konnte nicht geladen werden");
+      String key = retrieveMasterKeyFromServer(ctx);
+      if (key == null) {
+        Log.e("cordova-plugin-getmaster", "retrieveMasterKey: Key konnte nicht geladen werden");
         return false;
       }
 
-      return storeMasterKey(key,ctx);
-    }
-    catch (Exception e)
-    {
-      Log.e("cordova-plugin-getmaster","retrieveMasterKey: "+e.getMessage(),e);
+      return storeMasterKey(key, ctx);
+    } catch (Exception e) {
+      Log.e("cordova-plugin-getmaster", "retrieveMasterKey: " + e.getMessage(), e);
       return false;
     }
   }
 
+  public static void init(CallbackContext ctx, Context context){
+    if (!getmaster.checkForUSEAccount(context))
+    {
+      if (getmaster.retrieveMasterKey(context))
+      {
+        if (ctx!=null) {
+          ctx.success();
+        }
+        return;
+      }
+      if (ctx!=null) {
+        ctx.error("MasterKey konnte nicht geladen werden.");
+      }
+      return;
+    }
+
+    String key = getmaster.getMasterKey(context);
+    if (key!=null) {
+      if (ctx!=null) {
+        ctx.success();
+      }
+      return;
+    }
+
+    if (ctx!=null) {
+      ctx.error("MasterKey konnte nicht geladen werden.");
+    }
+    return;
+  }
 
   @Override
   public boolean execute(final String action, final JSONArray data, final CallbackContext callbackContext) {
 
-    if (action.equals("get")) {
-
+    if (action.equals("getUserSecret")) {
       cordova.getThreadPool().execute(new Runnable() {
         public void run() {
-          get(data, callbackContext);
+          getUserSecret(data, callbackContext);
+        }
+      });
+
+      return true;
+    }
+    else if (action.equals("init")) {
+      cordova.getThreadPool().execute(new Runnable() {
+        public void run() {
+          init(callbackContext,cordova.getContext());
         }
       });
 
