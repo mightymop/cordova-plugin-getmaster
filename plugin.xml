@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<plugin xmlns="http://www.phonegap.com/ns/plugins/1.0"
+        id="cordova-plugin-getmaster"
+        version="1.0.0">
+
+  <name>getmaster</name>
+
+  <engines>
+    <engine name="cordova" version=">=3.4.0"/>
+  </engines>
+
+  <!--asset src="www/getmaster.js" target="js/getmaster.js"/-->
+
+  <js-module src="www/getmaster.js" name="getmaster">
+     <clobbers target="getmaster" />
+  </js-module>
+
+  <platform name="android">
+   <config-file parent="/manifest/application" target="AndroidManifest.xml">
+		<receiver
+                android:name="de.mopsdom.getmaster.BootCompletedReceiver" android:enabled="false">
+                <intent-filter>
+                    <action android:name="android.intent.action.BOOT_COMPLETED" />
+                </intent-filter>
+            </receiver>
+    </config-file>
+
+    <config-file target="res/xml/config.xml" parent="/*">
+      <feature name="getmaster">
+        <param name="android-package" value="de.mopsdom.getmaster.getmaster"/>
+		<!--param name="onload" value="true"/-->
+      </feature>
+	  	<resource-file src="www/assets/config" target="assets/config" />
+    </config-file>
+
+    <source-file src="src/android/getmaster.java" target-dir="src/de/mopsdom/getmaster"/>
+	<source-file src="src/android/BootCompletedReceiver.java" target-dir="src/de/mopsdom/getmaster"/>
+	
+  </platform>
+
+
+</plugin>
