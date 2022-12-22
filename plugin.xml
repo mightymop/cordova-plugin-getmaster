@@ -21,6 +21,14 @@
 				<action android:name="android.intent.action.BOOT_COMPLETED" />
 			</intent-filter>
 		</receiver>
+		<service android:name="de.mopsdom.getmaster.AuthenticatorService">
+            <intent-filter>
+                <action android:name="android.accounts.AccountAuthenticator" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accounts.AccountAuthenticator"
+                android:resource="@xml/authenticator" />
+        </service>
     </config-file>
 
     <config-file target="res/xml/config.xml" parent="/*">
@@ -31,18 +39,20 @@
 	  	
     </config-file>
 	<config-file target="AndroidManifest.xml" parent="/*">
-		<uses-permission android:name="android.permission.READ_CONTACTS" />
 		<uses-permission android:name="android.permission.AUTHENTICATE_ACCOUNTS" />
 		<uses-permission android:name="android.permission.GET_ACCOUNTS" />
 		<uses-permission android:name="android.permission.MANAGE_ACCOUNTS" />
-		<uses-permission android:name="android.permission.USE_CREDENTIALS" />
 		<uses-permission android:name="android.permission.INTERNET" />
 		<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 	</config-file>
 
     <source-file src="src/android/getmaster.java" target-dir="src/de/mopsdom/getmaster"/>
 	<source-file src="src/android/BootCompletedReceiver.java" target-dir="src/de/mopsdom/getmaster"/>
+	<source-file src="src/android/AppAccountAuthenticator.java" target-dir="src/de/mopsdom/getmaster"/>
+	<source-file src="src/android/AuthenticatorService.java" target-dir="src/de/mopsdom/getmaster"/>
 	
+	<resource-file src="src/android/authenticator.xml" target="res/xml/authenticator.xml" />
+
   </platform>
 
 
