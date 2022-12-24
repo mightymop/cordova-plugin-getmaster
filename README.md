@@ -6,7 +6,7 @@ cordova plugin add https://github.com/mightymop/cordova-plugin-getmaster.git
 /// &lt;reference types="cordova-plugin-getmaster" /&gt;<br/>
 
 ### 3. Before build:
-install cordova-plugin-nslookup (https://github.com/mightymop/cordova-plugin-nslookup.git)
+install cordova-plugin-nslookup (https://github.com/mightymop/cordova-plugin-getmaster.git)
 add to config.xml > platform > android
 
 ```
