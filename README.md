@@ -19,5 +19,8 @@ add to config.xml > platform > android
 methods:
 
 ```
-	window.getmaster.get(success,err);
+	var users : string[] = ['user1','user2']
+	window.getmaster.getUserSecrets(user,ssuccess,err);
+	
+	window.getmaster.init(ssuccess,err);
 ```

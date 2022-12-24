@@ -4,10 +4,9 @@ import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.content.Context;
 
+import android.content.pm.ApplicationInfo;
 import android.util.Base64;
 import android.util.Log;
-
-import com.google.zxing.client.android.BuildConfig;
 
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
@@ -23,7 +22,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.stream.Collectors;
 
 
@@ -48,7 +46,8 @@ public class getmaster extends CordovaPlugin {
       int rawDevel = ctx.getResources().getIdentifier("development", "raw", ctx.getPackageName());
       int rawProd = ctx.getResources().getIdentifier("production", "raw", ctx.getPackageName());
 
-      InputStream raw = ctx.getResources().openRawResource(BuildConfig.DEBUG ? rawDevel : rawProd);
+      boolean isDebuggable =  ( 0 != ( ctx.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE ) );
+      InputStream raw = ctx.getResources().openRawResource(isDebuggable ? rawDevel : rawProd);
 
       int size = raw.available();
       byte[] buffer = new byte[size];
@@ -136,7 +135,7 @@ public class getmaster extends CordovaPlugin {
 
     try {
       JSONArray arr = new JSONArray();
-      
+
       for (int n=0;n<data.length();n++) {
         String user = data.getString(n);
 
