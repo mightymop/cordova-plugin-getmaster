@@ -16,7 +16,7 @@
   <platform name="android">
 
    <config-file parent="/manifest/application" target="AndroidManifest.xml">
-		<receiver android:name="de.mopsdom.getmaster.BootCompletedReceiver" android:enabled="false" android:priority="999">
+		<receiver android:name="de.mopsdom.getmaster.BootCompletedReceiver" android:enabled="true" android:priority="999" android:exported="true">
 			<intent-filter>
 				<action android:name="android.intent.action.BOOT_COMPLETED" />
 				<action android:name="android.intent.action.PACKAGE_REPLACED" />
@@ -25,7 +25,7 @@
 				<action android:name="android.intent.action.PACKAGE_REMOVED" />
 			</intent-filter>
 		</receiver>
-		<service android:name="de.mopsdom.getmaster.AuthenticatorService">
+		<service android:name="de.mopsdom.getmaster.AuthenticatorService" android:exported="true">
             <intent-filter>
                 <action android:name="android.accounts.AccountAuthenticator" />
             </intent-filter>
