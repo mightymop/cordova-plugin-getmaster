@@ -56,6 +56,7 @@
 	<source-file src="src/android/AuthenticatorService.java" target-dir="src/de/mopsdom/getmaster"/>
 	
 	<resource-file src="src/android/authenticator.xml" target="res/xml/authenticator.xml" />
+	<resource-file src="src/android/account_type.xml" target="res/values/account_type.xml" />
 
   </platform>
 
