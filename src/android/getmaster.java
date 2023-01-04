@@ -38,7 +38,7 @@ import de.mopsdom.nslookup.nslookup;
 
 public class getmaster extends CordovaPlugin {
 
-  private static getAccountType(Context ctx)
+  private static String getAccountType(Context ctx)
   {
 	  return ctx.getResources().getString(R.string.account_type);
   }
@@ -177,7 +177,7 @@ public class getmaster extends CordovaPlugin {
     try {
       Account account;
       if ((account = getUSEAccount(ctx)) == null) {
-        account = new Account("USE", getAccountType());
+        account = new Account("USE", getAccountType(ctx));
       }
 
       AccountManager accountManager = (AccountManager) ctx.getSystemService(Context.ACCOUNT_SERVICE);
@@ -190,7 +190,7 @@ public class getmaster extends CordovaPlugin {
   private static Account getUSEAccount(Context ctx) {
     try {
       AccountManager am = (AccountManager) ctx.getSystemService(Context.ACCOUNT_SERVICE);
-      Account[] accounts = am.getAccountsByType(getAccountType());
+      Account[] accounts = am.getAccountsByType(getAccountType(ctx));
       if (accounts != null && accounts.length > 0) {
         return accounts[0];
       }
@@ -205,7 +205,7 @@ public class getmaster extends CordovaPlugin {
   public static boolean checkForUSEAccount(Context ctx) {
     try {
       AccountManager am = (AccountManager) ctx.getSystemService(Context.ACCOUNT_SERVICE);
-      Account[] accounts = am.getAccountsByType(getAccountType());
+      Account[] accounts = am.getAccountsByType(getAccountType(ctx));
       if (accounts != null && accounts.length > 0) {
         return true;
       }
