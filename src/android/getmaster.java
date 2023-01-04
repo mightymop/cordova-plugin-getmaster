@@ -40,7 +40,11 @@ public class getmaster extends CordovaPlugin {
 
   private static String getAccountType(Context ctx)
   {
-	  return ctx.getResources().getString(R.string.account_type);
+	  int id_accountType = ctx.getResources().getIdentifier("account_type", "string", ctx.getPackageName());
+	  Log.e("cordova-plugin-getmaster",String.valueOf(id_accountType));
+    String result = ctx.getResources().getString(id_accountType);
+    Log.e("cordova-plugin-getmaster",result);
+    return result;
   }
 
   private static JSONObject getConfigFile(Context ctx) {
@@ -85,7 +89,15 @@ public class getmaster extends CordovaPlugin {
     }
 
     if (forceSettingsBackendUrl && (backend_url != null && backend_url.trim().length() > 0)) {
-      return backend_url;
+      try {
+        URL url = new URL(backend_url);
+        return url.getPort()!=-1 ? url.getHost() + ":" + String.valueOf(url.getPort()):url.getHost();
+      }catch (Exception e)
+      {
+        Log.e("cordova-plugin-getmaster",e.getMessage(),e);
+        String res = backend_url.replace("https://","").replace("http://","");
+        return res.contains("/")?res.substring(0,res.indexOf("/")):res;
+      }
     }
 
     try {
