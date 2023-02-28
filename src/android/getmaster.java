@@ -175,11 +175,11 @@ public class getmaster extends CordovaPlugin {
           String secret = jkeys.getJSONObject(m).getString("secret");
           String result = createUserSecret(secret, user);
           jkeys.getJSONObject(m).put("secret",result);
-          JSONObject obj = new JSONObject();
-          obj.put("user", user);
-          obj.put("secrets", jkeys.getJSONObject(m));
-          arr.put(obj);
         }
+        JSONObject obj = new JSONObject();
+        obj.put("user", user);
+        obj.put("secrets", jkeys);
+        arr.put(obj);
       }
 
       callbackContext.success(arr);
