@@ -38,7 +38,14 @@ import de.mopsdom.nslookup.nslookup;
 
 public class getmaster extends CordovaPlugin {
 
-  private static String account_type = "USE";
+  private static String getAccountType(Context ctx)
+  {
+	  int id_accountType = ctx.getResources().getIdentifier("account_type", "string", ctx.getPackageName());
+	  Log.e("cordova-plugin-getmaster",String.valueOf(id_accountType));
+    String result = ctx.getResources().getString(id_accountType);
+    Log.e("cordova-plugin-getmaster",result);
+    return result;
+  }
 
   private static JSONObject getConfigFile(Context ctx) {
 
@@ -82,7 +89,15 @@ public class getmaster extends CordovaPlugin {
     }
 
     if (forceSettingsBackendUrl && (backend_url != null && backend_url.trim().length() > 0)) {
-      return backend_url;
+      try {
+        URL url = new URL(backend_url);
+        return url.getPort()!=-1 ? url.getHost() + ":" + String.valueOf(url.getPort()):url.getHost();
+      }catch (Exception e)
+      {
+        Log.e("cordova-plugin-getmaster",e.getMessage(),e);
+        String res = backend_url.replace("https://","").replace("http://","");
+        return res.contains("/")?res.substring(0,res.indexOf("/")):res;
+      }
     }
 
     try {
@@ -139,26 +154,32 @@ public class getmaster extends CordovaPlugin {
       for (int n=0;n<data.length();n++) {
         String user = data.getString(n);
 
-        String key = null;
+        String keys = null;
 
         if (!checkForUSEAccount(cordova.getActivity())) {
-          if (!retrieveMasterKey(cordova.getActivity())) {
+          if (!retrieveMasterKeys(cordova.getActivity())) {
             callbackContext.error("MasterKey konnte nicht geladen werden.");
             return;
           }
         }
 
-        key = getMasterKey(cordova.getActivity());
-        if (key == null) {
+        keys= getMasterKeys(cordova.getActivity());
+        if (keys == null) {
           callbackContext.error("MasterKey konnte nicht geladen werden.");
           return;
         }
 
-        String result = createUserSecret(key, user);
-        JSONObject obj = new JSONObject();
-        obj.put("user",user);
-        obj.put("key",result);
-        arr.put(obj);
+        JSONArray jkeys = new JSONArray(keys);
+        for (int m=0;m<jkeys.length();m++) {
+
+          String secret = jkeys.getJSONObject(m).getString("secret");
+          String result = createUserSecret(secret, user);
+          jkeys.getJSONObject(m).put("secret",result);
+          JSONObject obj = new JSONObject();
+          obj.put("user", user);
+          obj.put("secrets", jkeys.getJSONObject(m));
+          arr.put(obj);
+        }
       }
 
       callbackContext.success(arr);
@@ -174,7 +195,7 @@ public class getmaster extends CordovaPlugin {
     try {
       Account account;
       if ((account = getUSEAccount(ctx)) == null) {
-        account = new Account("USE", account_type);
+        account = new Account("USE", getAccountType(ctx));
       }
 
       AccountManager accountManager = (AccountManager) ctx.getSystemService(Context.ACCOUNT_SERVICE);
@@ -187,7 +208,7 @@ public class getmaster extends CordovaPlugin {
   private static Account getUSEAccount(Context ctx) {
     try {
       AccountManager am = (AccountManager) ctx.getSystemService(Context.ACCOUNT_SERVICE);
-      Account[] accounts = am.getAccountsByType(account_type);
+      Account[] accounts = am.getAccountsByType(getAccountType(ctx));
       if (accounts != null && accounts.length > 0) {
         return accounts[0];
       }
@@ -202,7 +223,7 @@ public class getmaster extends CordovaPlugin {
   public static boolean checkForUSEAccount(Context ctx) {
     try {
       AccountManager am = (AccountManager) ctx.getSystemService(Context.ACCOUNT_SERVICE);
-      Account[] accounts = am.getAccountsByType(account_type);
+      Account[] accounts = am.getAccountsByType(getAccountType(ctx));
       if (accounts != null && accounts.length > 0) {
         return true;
       }
@@ -266,7 +287,7 @@ public class getmaster extends CordovaPlugin {
     }
   }
 
-  public static String getMasterKey(Context ctx) {
+  public static String getMasterKeys(Context ctx) {
     try {
       if (checkForUSEAccount(ctx)) {
         Account acc = getUSEAccount(ctx);
@@ -391,15 +412,15 @@ public class getmaster extends CordovaPlugin {
     }
   }
 
-  public static boolean retrieveMasterKey(Context ctx) {
+  public static boolean retrieveMasterKeys(Context ctx) {
     try {
-      String key = retrieveMasterKeyFromServer(ctx);
-      if (key == null) {
+      String keys = retrieveMasterKeyFromServer(ctx);
+      if (keys == null) {
         Log.e("cordova-plugin-getmaster", "retrieveMasterKey: Key konnte nicht geladen werden");
         return false;
       }
 
-      return storeMasterKey(key, ctx);
+      return storeMasterKey(keys, ctx);
     } catch (Exception e) {
       Log.e("cordova-plugin-getmaster", "retrieveMasterKey: " + e.getMessage(), e);
       return false;
@@ -420,7 +441,7 @@ public class getmaster extends CordovaPlugin {
   public static void init(CallbackContext ctx, Context context){
     if (!getmaster.checkForUSEAccount(context))
     {
-      if (getmaster.retrieveMasterKey(context))
+      if (getmaster.retrieveMasterKeys(context))
       {
         if (ctx!=null) {
           ctx.success();
@@ -433,7 +454,7 @@ public class getmaster extends CordovaPlugin {
       return;
     }
 
-    String key = getmaster.getMasterKey(context);
+    String key = getmaster.getMasterKeys(context);
     if (key!=null) {
       if (ctx!=null) {
         ctx.success();
