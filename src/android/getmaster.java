@@ -98,6 +98,7 @@ public class getmaster extends CordovaPlugin {
       }
     }
 
+	return null;
    /* try {
       nslookup dns = new nslookup();
       if (srv_record != null) {
