@@ -34,8 +34,6 @@ import javax.net.ssl.SSLSession;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
-import de.mopsdom.nslookup.nslookup;
-
 public class getmaster extends CordovaPlugin {
 
   private static String getAccountType(Context ctx)
@@ -70,25 +68,25 @@ public class getmaster extends CordovaPlugin {
 
   private static String getBackend(Context ctx) {
     JSONObject config = getConfigFile(ctx);
-    String srv_record =null;
+    //String srv_record =null;
     String backend_url = null;
-    ArrayList<String> dnsServers = new ArrayList<>();
+   // ArrayList<String> dnsServers = new ArrayList<>();
     JSONArray arrJson;
     boolean forceSettingsBackendUrl = false;
     try {
-      srv_record = config.getJSONObject("api_endpoints").getString("srv_record");
+      //srv_record = config.getJSONObject("api_endpoints").getString("srv_record");
       backend_url = config.getJSONObject("api_endpoints").getString("backend_url");
-      forceSettingsBackendUrl = config.getJSONObject("api_endpoints").getBoolean("forceSettingsBackendUrl");
+      //forceSettingsBackendUrl = config.getJSONObject("api_endpoints").getBoolean("forceSettingsBackendUrl");
 
-      arrJson = config.getJSONObject("api_endpoints").getJSONArray("custom_dnsserver");
+     /* arrJson = config.getJSONObject("api_endpoints").getJSONArray("custom_dnsserver");
       for (int i = 0; i < arrJson.length(); i++)
-        dnsServers.add(arrJson.getString(i));
+        dnsServers.add(arrJson.getString(i));*/
     } catch (Exception e) {
       Log.e("cordova-plugin-getmaster", "getBackend: " + e.getMessage());
       return null;
     }
 
-    if (forceSettingsBackendUrl && (backend_url != null && backend_url.trim().length() > 0)) {
+    if (/*forceSettingsBackendUrl && (*/backend_url != null && backend_url.trim().length() > 0)/*)*/ {
       try {
         URL url = new URL(backend_url);
         return url.getPort()!=-1 ? url.getHost() + ":" + String.valueOf(url.getPort()):url.getHost();
@@ -100,7 +98,7 @@ public class getmaster extends CordovaPlugin {
       }
     }
 
-    try {
+   /* try {
       nslookup dns = new nslookup();
       if (srv_record != null) {
         JSONObject result = dns.doNslookup(srv_record, "SRV", dnsServers, false);
@@ -123,7 +121,7 @@ public class getmaster extends CordovaPlugin {
     {
       Log.e("cordova-plugin-getmaster", "getBackend: " + e.getMessage());
       return null;
-    }
+    }*/
   }
 
   private static boolean allowCerts(Context ctx) {
