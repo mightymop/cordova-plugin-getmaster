@@ -5,6 +5,7 @@ import android.accounts.AccountManager;
 import android.content.Context;
 
 import android.content.pm.ApplicationInfo;
+import android.net.Uri;
 import android.util.Base64;
 import android.util.Log;
 
@@ -14,9 +15,14 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
@@ -313,53 +319,89 @@ public class getmaster extends CordovaPlugin {
     return s;
   }
 
-  private static String retrieveMasterKeyFromServer(Context ctx) {
+  public static HttpsURLConnection getConnection(Context context, Uri uri, String method) {
+    try
+    {
+      URL url = new URL(uri.toString());
 
-    String hostname_port = getBackend(ctx);
-    boolean allowAllCerts = allowCerts(ctx);
+      HttpsURLConnection conn = null;
 
-    if (allowAllCerts) {
-      TrustManager[] trustAllCerts = new TrustManager[]{
-        new X509TrustManager() {
-          public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-            return null;
-          }
+      conn = (HttpsURLConnection) url.openConnection();
 
-          public void checkClientTrusted(
-            java.security.cert.X509Certificate[] certs, String authType) {
-          }
+      // Set up the connection properties
+      conn.setRequestMethod(method);
+      int timeout = 20000;
+      conn.setReadTimeout(timeout /* milliseconds */);
+      conn.setConnectTimeout(timeout /* milliseconds */);
+      conn.setDoInput(true);
+      if (method.equalsIgnoreCase("post")) {
+        conn.setDoOutput(true);
+      }
 
-          public void checkServerTrusted(
-            java.security.cert.X509Certificate[] certs, String authType) {
-          }
-        }
-      };
+      return conn;
+    } catch (IOException e) {
+      Log.e("cordova-plugin-getmaster",e.getMessage());
+      return null;
+    }
+  }
 
-      try {
-        SSLContext sc = SSLContext.getInstance("SSL");
-        sc.init(null, trustAllCerts, new java.security.SecureRandom());
-        HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+  private static String retrieveMasterKeyFromServer(Context ctx)
+  {
+    try
+    {
+      String hostname_port = getBackend(ctx);
+      boolean allowAllCerts = allowCerts(ctx);
 
-        // Create all-trusting host name verifier
-        HostnameVerifier allHostsValid = new HostnameVerifier() {
-          public boolean verify(String hostname, SSLSession session) {
-            return true;
+      if (allowAllCerts) {
+        TrustManager[] trustAllCerts = new TrustManager[]{
+          new X509TrustManager() {
+            public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+              return null;
+            }
+
+            public void checkClientTrusted(
+              java.security.cert.X509Certificate[] certs, String authType) {
+            }
+
+            public void checkServerTrusted(
+              java.security.cert.X509Certificate[] certs, String authType) {
+            }
           }
         };
 
-        HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
-      } catch (Exception e) {
-        Log.e("cordova-plugin-getmaster", "retrieveMasterKey: " + e.getMessage());
-        return null;
+        try {
+          SSLContext sc = SSLContext.getInstance("SSL");
+          sc.init(null, trustAllCerts, new java.security.SecureRandom());
+          HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+
+          // Create all-trusting host name verifier
+          HostnameVerifier allHostsValid = new HostnameVerifier() {
+            public boolean verify(String hostname, SSLSession session) {
+              return true;
+            }
+          };
+
+          HttpsURLConnection.setDefaultHostnameVerifier(allHostsValid);
+        } catch (Exception e) {
+          Log.e("cordova-plugin-getmaster", "retrieveMasterKey: " + e.getMessage());
+          return null;
+        }
       }
-    }
 
-
-    try {
-
-      URL url;
-      HttpsURLConnection urlConnection = null;
+      HttpsURLConnection urlConnection;
       String urlstr = "https://"+hostname_port+"/use_service/datadownload/getmaster";
+
+      HttpsURLConnection connection = getConnection(ctx, Uri.parse(urlstr),"POST");
+
+      if (!allowAllCerts) {
+        SSLContext sc;
+        sc = SSLContext.getInstance("TLS");
+        sc.init(null, null, new java.security.SecureRandom());
+        connection.setSSLSocketFactory(sc.getSocketFactory());
+      }
+
+      connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+      connection.setRequestProperty("Accept", "application/json");
 
       MessageDigest digest = MessageDigest.getInstance("SHA-256");
       byte[] encodedhash = digest.digest(ctx.getPackageName().getBytes(StandardCharsets.UTF_8));
@@ -368,45 +410,40 @@ public class getmaster extends CordovaPlugin {
       JSONObject param = new JSONObject();
       param.put("token",hashedPackageId);
 
-      url = new URL(urlstr);
+      OutputStream outputStream = connection.getOutputStream();
+      BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(outputStream));
 
-      urlConnection = (HttpsURLConnection) url.openConnection();
+      writer.write(param.toString());
+      writer.flush();
+      writer.close();
 
-      // Create the SSL connection
-      if (!allowAllCerts) {
-        SSLContext sc;
-        sc = SSLContext.getInstance("TLS");
-        sc.init(null, null, new java.security.SecureRandom());
-        urlConnection.setSSLSocketFactory(sc.getSocketFactory());
+      try {
+        int respCode = 0;
+        if ((respCode=connection.getResponseCode()) == HttpsURLConnection.HTTP_OK) {
+          InputStream inputStream = connection.getInputStream();
+          BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+
+          StringBuilder result = new StringBuilder();
+          String line;
+          while ((line = reader.readLine()) != null) {
+            result.append(line);
+          }
+          reader.close();
+          return new String(Base64.decode(result.toString().trim().replace("\"",""),Base64.NO_WRAP),"UTF-8");
+        } else {
+          Log.e("cordova-plugin-getmaster", connection.getResponseMessage() + ": " + String.valueOf(respCode));
+          return null;
+        }
+      }
+      finally {
+        connection.disconnect();
       }
 
-      // set Timeout and method
-      urlConnection.setReadTimeout(7000);
-      urlConnection.setConnectTimeout(7000);
-      urlConnection.setRequestMethod("POST");
-      urlConnection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-      urlConnection.setRequestProperty("Accept", "application/json");
-      urlConnection.setDoInput(true);
-      urlConnection.setDoOutput(true);
-
-      urlConnection.connect();
-
-      OutputStream os = urlConnection.getOutputStream();
-      os.write(param.toString().getBytes("UTF-8"));
-      os.close();
-
-      if (urlConnection.getResponseCode() < 200 || urlConnection.getResponseCode() > 201)
-        return null;
-
-      InputStream in = urlConnection.getInputStream();
-
-      String result = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)).lines().collect(Collectors.joining(""));
-
-      urlConnection.disconnect();
-      return new String(Base64.decode(result.trim().replace("\"",""),Base64.NO_WRAP),"UTF-8");
     }
-    catch (Exception e) {
-      Log.e("cordova-plugin-getmaster", "retrieveMasterKey: "+e.getMessage());
+    catch (Exception e)
+    {
+      Log.e("cordova-plugin-getmaster",e.getMessage(),e);
+
       return null;
     }
   }
